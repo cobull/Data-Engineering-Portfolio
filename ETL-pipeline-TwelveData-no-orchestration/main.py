@@ -6,7 +6,7 @@ import time
 
 """
 This script, and the associated functions, act as the driver of a data pipeline that extracts, transforms, and loads data from the TwelveData API
-into a PostgreSQL database. First, hourly stock exchange data for the specified stocks and etfs is requested from the TwelveData API. Next, this 
+into a PostgreSQL database. First, half-hourly stock exchange data for the specified stocks and etfs is requested from the TwelveData API. Next, this 
 data is modified and transform to meet required specifications. This modified and transformed data is then loaded to a PostgreSQL database. This
 process is repeated for various technical indicators of each stock and etf.
 """
@@ -29,7 +29,7 @@ def extract(url):
     print(f"Extract time: {elapsed_time:.4f}")
     return response_dict
 
-def transform_hourly(response_dict):
+def transform_half_hourly(response_dict):
     """
     This function accepts a dictionary object as a parameter, and then transforms the data of interest to ensure proper formatting and typing.
     Specifically, the value of the key "values" in the dictionary parameter is modified, and this value, which is itself a list, is passed to 
@@ -50,7 +50,7 @@ def transform_hourly(response_dict):
         value["volume"] = int(value["volume"])
     elapsed_time = time.perf_counter() - time_start
     print(f"Transform time: {elapsed_time:.4f}")
-    load_hourly(response_dict["values"])
+    load_half_hourly(response_dict["values"])
     
 def transform_technical(response_dict, indicator):
     """
@@ -76,19 +76,19 @@ def transform_technical(response_dict, indicator):
     print(f"Transform time: {elapsed_time:.4f}")
     load_technical(value_list)
 
-def create_hourly_table(curr):
+def create_half_hourly_table(curr):
     """
-    This function uses the cursor object parameter to query the database for the existence of a table named "hourly_data". If this table is present,
+    This function uses the cursor object parameter to query the database for the existence of a table named "half_hourly_data". If this table is present,
     nothing else happens. If this table is not present, then the cursor object will execute SQL code to create the appropiate table in the database.
 
     Args:
         curr (Object): Psycopg2 cursor object using a connection to the database
     """
-    curr.execute("SELECT EXISTS(SELECT * FROM information_schema.tables WHERE table_name = %s)", ("hourly_data",))
+    curr.execute("SELECT EXISTS(SELECT * FROM information_schema.tables WHERE table_name = %s)", ("half_hourly_data",))
     exists = curr.fetchone()[0]
     if not exists:
         curr.execute("""
-                    CREATE TABLE hourly_data (
+                    CREATE TABLE half_hourly_data (
                         ticker VARCHAR(10) NOT NULL,
                         datetime TIMESTAMP NOT NULL,
                         open DECIMAL(10,2),
@@ -121,22 +121,22 @@ def create_technical_table(curr):
                     );
                     """)
     
-def load_hourly(hourly_data):
+def load_half_hourly(half_hourly_data):
     """
-    This function creates a connection to the database, calls "create_hourly_table" to create this table should it not already be present, and then executes
-    a batch insert into the "hourly_data" table. The SQL insert statement uses key value pairs from the list of dictionaries parameter in order to pass named
+    This function creates a connection to the database, calls "create_half_hourly_table" to create this table should it not already be present, and then executes
+    a batch insert into the "half_hourly_data" table. The SQL insert statement uses key value pairs from the list of dictionaries parameter in order to pass named
     arguments into the SQL command.
 
     Args:
-        hourly_data (List): The modified and transformed value of the key "values" from the decoded response dictionary
+        half_hourly_data (List): The modified and transformed value of the key "values" from the decoded response dictionary
     """
     time_start = time.perf_counter()
     conn = psycopg2.connect(dbname="YOUR_DB_NAME", user="postgres", password="YOUR_PASSWORD", host="localhost", port="PORT_NUMBER")
     curr = conn.cursor()
-    create_hourly_table(curr)
+    create_half_hourly_table(curr)
     psycopg2.extras.execute_batch(curr,
                                   """
-                                  INSERT INTO hourly_data VALUES (
+                                  INSERT INTO half_hourly_data VALUES (
                                       %(symbol)s,
                                       %(datetime)s,
                                       %(open)s,
@@ -145,7 +145,7 @@ def load_hourly(hourly_data):
                                       %(close)s,
                                       %(volume)s      
                                   );
-                                  """, hourly_data)
+                                  """, half_hourly_data)
     conn.commit()
     curr.close()
     conn.close()
@@ -189,7 +189,7 @@ date = datetime.today().strftime("%Y-%m-%d")
 for ticker in tickers:
     url = "https://api.twelvedata.com/time_series?apikey=YOUR_API_KEY&interval=30min&symbol=" + ticker + "&outputsize=13&date=today"
     data = extract(url)
-    transform_hourly(data)
+    transform_half_hourly(data)
     
 time.sleep(100) # To accomodate API limits
 
